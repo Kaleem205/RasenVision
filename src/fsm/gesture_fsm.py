@@ -39,9 +39,11 @@ class GestureFSM:
                     self.state = "IDLE"
                     self.no_pose_frames = 0
 
-        # 3. ACTIVATED: effect is live, waiting for throw/cancel
+        # 3. ACTIVATED: effect is live, waiting for cancel
         elif self.state == "ACTIVATED":
-            if motion == "SWIPING" or pose == "CLOSED FIST":
+            # Removed the swipe cancellation. 
+            # Fast movements will no longer destroy the Rasenshuriken.
+            if pose == "CLOSED FIST":
                 self.state = "IDLE"
 
         return self.state

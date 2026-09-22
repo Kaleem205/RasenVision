@@ -6,8 +6,6 @@ import random
 class ProceduralRenderer:
     def __init__(self):
         self.anim_frame = 0
-        # Initialize 150 wind particles to fake 3D volume
-        # [angle, radius_multiplier, rotation_speed, phase_offset]
         self.particles = []
         for _ in range(150):
             self.particles.append([
@@ -25,7 +23,6 @@ class ProceduralRenderer:
         
         h, w = frame.shape[:2]
         
-        # Large box size to prevent wide particles from clipping
         box_size = int(650 * scale_factor)
         box_size = max(30, min(box_size, h - 10, w - 10))
         if box_size % 2 == 0: 
@@ -33,13 +30,28 @@ class ProceduralRenderer:
             
         half_box = box_size // 2
 
-        y1, y2 = max(0, center_y - half_box), center_y - half_box + box_size
-        x1, x2 = max(0, center_x - half_box), center_x - half_box + box_size
+        # FIXED BOUNDARY LOGIC: Shifts the box inward if it hits the screen edge 
+        # so the array size always perfectly matches the effect canvas
+        y1 = center_y - half_box
+        y2 = y1 + box_size
+        x1 = center_x - half_box
+        x2 = x1 + box_size
         
-        if y2 > h: y1, y2 = h - box_size, h
-        if x2 > w: x1, x2 = w - box_size, w
-        
+        if y1 < 0:
+            y2 -= y1
+            y1 = 0
+        if x1 < 0:
+            x2 -= x1
+            x1 = 0
+        if y2 > h:
+            y1 -= (y2 - h)
+            y2 = h
+        if x2 > w:
+            x1 -= (x2 - w)
+            x2 = w
+            
         y1, x1 = max(0, y1), max(0, x1)
+        
         if y2 - y1 < 10 or x2 - x1 < 10: 
             return frame
 
@@ -49,44 +61,39 @@ class ProceduralRenderer:
         growth = min(1.0, self.anim_frame / 12.0)
         base_r = int((1 - (1 - growth) ** 3) * 75 * scale_factor) 
         
-        # 1. Outer ambient aura
-        cv2.circle(canvas, center, int(base_r * 1.15), (255, 100, 20), -1)
+        # Fade in to prevent the blue flash
+        fade = min(1.0, self.anim_frame / 5.0)
+        b = int(255 * fade)
+        g = int(100 * fade)
+        r_color = int(20 * fade)
+        
+        cv2.circle(canvas, center, int(base_r * 1.15), (b, g, r_color), -1)
         canvas = cv2.GaussianBlur(canvas, (51, 51), 0)
 
-        # --- NEW: 3D Particle Wind Simulation ---
+        # --- 3D Particle Wind Simulation ---
         wind_layer = np.zeros_like(canvas)
-        
-        # Y-axis tilt to simulate looking at a 3D disk from an angle
         tilt = 0.45 
         
         for p in self.particles:
-            # Update particle rotation
             p[0] += math.radians(p[2])
-            
-            # Dynamic radius that breathes/pulses
             pulse = math.sin(self.anim_frame * 0.1 + p[3]) * 0.3
             current_r = base_r * (p[1] + pulse)
             
-            # 3D Orbit coordinates
             x = int(center[0] + math.cos(p[0]) * current_r)
             y = int(center[1] + math.sin(p[0]) * current_r * tilt)
             
-            # Depth fading: particles moving to the "back" of the sphere get darker
-            depth_intensity = (math.sin(p[0]) + 1) / 2 # Ranges 0.0 to 1.0
+            depth_intensity = (math.sin(p[0]) + 1) / 2 
             brightness = int(50 + (205 * depth_intensity))
             color = (255, 230, brightness)
             
-            # Draw particle with a motion-blur tail
             tail_x = int(center[0] + math.cos(p[0] - 0.15) * current_r)
             tail_y = int(center[1] + math.sin(p[0] - 0.15) * current_r * tilt)
             
             cv2.line(wind_layer, (tail_x, tail_y), (x, y), color, max(1, int(3 * scale_factor)))
 
-        # Soften the particles to look like glowing wind rather than hard pixels
         wind_layer = cv2.GaussianBlur(wind_layer, (7, 7), 0)
-        # ----------------------------------------
         
-        # 2. Fast-spinning internal structure
+        # --- Fast-spinning internal structure ---
         lines_layer = np.zeros_like(canvas)
         for i in range(8):
             angle = self.anim_frame * (15 + i) + (i * 45)
@@ -97,7 +104,7 @@ class ProceduralRenderer:
             axes2 = (int(base_r * 0.8), int(base_r * 0.2))
             cv2.ellipse(lines_layer, center, axes2, angle2, 0, 360, (255, 255, 200), max(1, int(1.5*scale_factor)))
 
-        # 3. Turbulent bright core
+        # --- Turbulent bright core ---
         core_wobble = int(math.sin(self.anim_frame * 0.8) * 3 * scale_factor)
         core_r = int(base_r * 0.35) + core_wobble
         
@@ -105,11 +112,10 @@ class ProceduralRenderer:
         cv2.circle(lines_layer, center, int(core_r * 1.3), (255, 200, 50), max(1, int(4 * scale_factor)))
         lines_layer = cv2.GaussianBlur(lines_layer, (5, 5), 0)
         
-        # Combine Core + 3D Particle Wind
         final_effect = cv2.add(canvas, lines_layer)
         final_effect = cv2.add(final_effect, wind_layer)
 
-        # 4. Additive Blending
+        # Additive Blending
         roi = frame[y1:y2, x1:x2].astype(np.float32)
         blended = np.clip(cv2.add(roi, final_effect.astype(np.float32)), 0, 255).astype(np.uint8)
         frame[y1:y2, x1:x2] = blended
