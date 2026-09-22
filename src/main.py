@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 from recognition.pose_classifier import PoseClassifier
+from recognition.motion_detector import MotionDetector
 
 def main():
     mp_hands = mp.solutions.hands
@@ -12,8 +13,9 @@ def main():
         max_num_hands=2 
     )
     
-    # Initialize our new classifier
+    # Initialize both recognition modules
     pose_classifier = PoseClassifier()
+    motion_detector = MotionDetector(buffer_size=15)
 
     cap = cv2.VideoCapture(1)
 
@@ -31,26 +33,29 @@ def main():
 
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
-                # Draw the tracking dots
-                mp_drawing.draw_landmarks(
-                    frame,
-                    hand_landmarks,
-                    mp_hands.HAND_CONNECTIONS
-                )
+                mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
                 
-                # Classify the current hand gesture
+                # 1. Process Static Pose
                 current_pose = pose_classifier.classify(hand_landmarks)
                 
-                # Get the wrist coordinates to place the text directly above the hand
-                h, w, c = frame.shape
-                wrist_x = int(hand_landmarks.landmark[0].x * w)
-                wrist_y = int(hand_landmarks.landmark[0].y * h)
+                # 2. Process Dynamic Motion
+                wrist = hand_landmarks.landmark[0]
+                motion_detector.update(wrist)
+                current_motion = motion_detector.detect_motion()
                 
-                # Draw the text on the video frame
-                cv2.putText(frame, current_pose, (wrist_x - 50, wrist_y - 50), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                # Render results on screen
+                h, w, c = frame.shape
+                wrist_x = int(wrist.x * w)
+                wrist_y = int(wrist.y * h)
+                
+                # Draw Pose in Green
+                cv2.putText(frame, f"Pose: {current_pose}", (wrist_x - 50, wrist_y - 70), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
+                # Draw Motion in Orange
+                cv2.putText(frame, f"Motion: {current_motion}", (wrist_x - 50, wrist_y - 40), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2, cv2.LINE_AA)
 
-        cv2.imshow('RasenVision - Pose Recognition', frame)
+        cv2.imshow('RasenVision - Motion Tracking', frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
