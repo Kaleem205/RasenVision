@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rasenvision"
+version = "0.1.0"
+description = "AR gesture recognition system for Rasenshuriken"
+requires-python = ">=3.9"
+dependencies = [
+    "opencv-python>=4.8.0",
+    "mediapipe>=0.10.0",
+    "numpy>=1.26.0"
+]
